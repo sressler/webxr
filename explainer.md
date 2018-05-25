@@ -133,6 +133,8 @@ async function onXRAvailable(device) {
 
 Clicking the button in the previous sample will attempt to acquire an `XRSession` by callling `XRDevice`'s `requestSession()` method. This returns a promise that resolves to an `XRSession` upon success. When requesting a session, the capabilities that the returned session must have are passed in via a dictionary, exactly like the `supportsSession` call. If `supportsSession` resolved for a given dictionary, then calling `requestSession` with the same dictionary values should be reasonably expected to succeed, barring external factors (such as `requestSession` not being called in a user gesture for an exclusive session.) The UA is ultimately responsible for determining if it can honor the request.
 
+If the request is for an exclusive session and the UA already has an active exclusive session for the hardware represented by the `XRDevice`, or a pre-existing pending request for an exclusive session, then the new request must be rejected.
+
 ```js
 function beginXRSession() {
   // requestSession must be called within a user gesture event
