@@ -179,36 +179,33 @@ Most applications will want to visually represent the input sources somehow. The
 
 Determining what to render is important as well. In some cases it's appropriate for the application to render a contextually appropriate model (such as a racket in a tennis game), in which case the physical appearance of the input source doesn't matter much. Many other times, though, it's desirable for the application to display a device that matches what the user is holding, especially when relaying instructions about it's use. Finally there are times when it's best to not render anything at all, such as when the XR device uses a transparent display and the user can see their hands and/or any tracked devices without app assistance.
 
- The `XRInputSource`'s `renderId` is used to determine what should be rendered if the app intends to visualize the input source itself, rather than an alternative virtual object.
+Controller devices should generally only be rendered if the `XRSession`'s `environmentBlendMode` is `'opaque'`, as any other mode implies that the user can see any physical device they may be holding. Rendering cursors or target rays may still be desirable.
 
-  - A `renderId` of `''` (empty string) indicates the input source should not be rendered. Cursors and pointing rays should still be rendered as described above if needed by the application. Input sources with a `targetRayMode` of `'gaze'` or `'screen'` MUST have a `renderId` of `''`. `'tracked-pointer'` input sources should typically only have a `renderId` of `''` when using displays that allow the user to see their environment and the physical input source.
-  - The `renderId` may be `'unknown'` if the type of input source cannot be reliably identified or the UA determines that the input source type must be masked for any reason. Applications should render a generic input device in this case.
-  - Inline sessions MUST only expose `renderId`s of `''` or `'unknown'`.
-  - Otherwise the `renderId` should be a lower-case string that describes the physical input source. It should not include an indication of the handedness of the input source, as that should be implied by the `handedness` attribute.
-    - If the input source is a tracked hand without any held controller and the input source should be rendered by the application, the `renderId` MUST be `hand`
-    - For most controllers this should ideally be of the format `<vendor>-<product-id>`. For example: `oculus-touch`. UAs should make an effort to align on the strings that are returned for any given device.
+If the input source is a handheld device, the `XRInputSource` object should have a non-null `gamepad` attribute. The `Gamepad`'s `id` is used to determine what should be rendered if the app intends to visualize the input source itself, rather than an alternative virtual object. (See the section on [Button and Axis State](#button-and-axis-state) for more details.)
 
-The WebXR Device API currently does not offer any way to retrieve renderable resources that represent the input devices from the API itself, and as such the `renderId` must be used as a key to load an appropriate resources from the application's server or a CDN. The example below presumes that the `getControllerMesh` call would do the required lookup and caching.
+The WebXR Device API currently does not offer any way to retrieve renderable resources that represent the input devices from the API itself, and as such the `Gamepad`'s `id` must be used as a key to load an appropriate resources from the application's server or a CDN. The example below presumes that the `getControllerMesh` call would do the required lookup and caching.
 
 ```js
 // These methods presumes the use of a fictionalized rendering library.
 
 // Render a visualization of the input source - eg. a controller mesh.
 function renderInputSource(xrFrame, inputSource) {
-  // Don't render an input source if it doesn't have a grip space.
-  if (!inputSource.gripSpace)
+  // Don't render an input source if it doesn't have a grip space, doesn't have
+  // a gamepad, or if the blend mode is not 'opaque'. 
+  if (!inputSource.gripSpace || !inputSource.gamepad ||
+      xrFrame.session.environmentBlendMode != 'opaque')
     return;
 
-  let gripPose = xrFrame.getPose(inputSource.gripSpace, xrFrameOfRef);
+  // Retrieve a mesh to render based on the gamepad object's id. If no mesh is
+  // found skip rendering.
+  let controllerMesh = getControllerMesh(inputSource.gamepad.id);
+  if (!controllerMesh)
+    return;
 
-  // Controller meshes should not be rendered on transparent displays (AR), so
-  // only render a controller mesh if the XREnvironmentBlendMode is 'opaque' and
-  // we have a valid gripPose to transform it with.
-  if (gripPose && xrFrame.session.environmentBlendMode == 'opaque') {
-    let controllerMesh = getControllerMesh(inputSource.renderId);
-    if (controllerMesh) {
-      renderer.drawMeshAtTransform(controllerMesh, gripPose.transform);
-    }
+  // Only render a controller mesh if we have a valid gripPose.
+  let gripPose = xrFrame.getPose(inputSource.gripSpace, xrFrameOfRef);
+  if (gripPose) {
+    renderer.drawMeshAtTransform(controllerMesh, gripPose.transform);
   }
 }
 
@@ -295,6 +292,91 @@ When the canvas receives a `pointerdown` event an `XRInputSource` is created wit
 
 For each of these events the `XRInputSource`'s target ray must be updated to originate at the point that was interacted with on the canvas, projected onto the near clipping plane (defined by the `depthNear` attribute of the `XRSession`) and extending out into the scene along that projected vector.
 
+## Button and Axis State
+
+Some applications need more than point-and-click style interaction provided by the `select` events. For devices that make use of controllers with buttons and axes, more complete information about the state of those inputs can be observed via the `XRInputSource`'s `gamepad` attribute.
+
+If the `XRInputState` represents an XR controller device with buttons or axes the `gamepad` attribute is an instance of a [`Gamepad`](https://w3c.github.io/gamepad/#gamepad-interface) interface, and `null` otherwise. Examples of controllers that may expose their state this way include Oculus Touch, Vive wands, Oculus Go and Daydream controllers, or other similar devices. Controllers not directly associated with the XR device, such as the majority of traditional gamepads, should not be exposed using this interface. Tracked devices without discreet inputs, such as optical hand tracking, should also have a `null` `gamepad` attribute.
+
+`Gamepad` instances reported in this way have several notable behavioral changes vs. the ones reported by `navigator.getGamepads()`:
+
+  - `Gamepad` instances connected to an `XRInputSource` must not be included in the array returned by `navigator.getGamepads()`.
+  - The `Gamepad`'s `index` attribute must be `-1`.
+  - The `Gamepad`'s `connected` attribute must always be `true`.
+  - The `Gamepad`'s `mapping` attribute must be `xr-standard`.
+
+Finally, the `id` attribute for `Gamepad`s surfaced by the WebXR API are more strictly formatted than those of traditional gamepads in order to make them a more appropriate key for determining rendering assets.
+
+  - The `id` MAY be `'unknown'` if the type of input source cannot be reliably identified or the UA determines that the input source type must be masked for any reason. Applications should render a generic input device in this case.
+  - Inline sessions MUST only expose `id`s of `'unknown'`.
+  - Otherwise the `id` should be a lower-case string that describes the physical input source.
+    - For most devices this SHOULD be of the format `<vendor>-<product-id>`. For example: `oculus-touch`. UAs SHOULD make an effort to align on the strings that are returned for any given device.
+    - It should not include an indication of the handedness of the input source, as that should be implied by the `handedness` attribute.
+
+All other attributes behave as described in the [Gamepad](https://w3c.github.io/gamepad/) specification.
+
+The WebXR Device API introduces a new standard controller layout indicated by the `mapping` value of `xr-standard`. (Additional mapping variants may be added in the future if necessary.) This defines a specific layout for the inputs most commonly found on XR controller devices today. The following table describes the buttons/axes and their physical locations:
+
+| Button/Axis  | Location                          |
+| ------------ | --------------------------------- |
+| buttons[0]   | Primary trigger                   |
+| buttons[1]   | Primary Touchpad/Joystick click   |
+| buttons[2]   | Grip/Secondary trigger            |
+| buttons[3]   | Secondary Touchpad/Joystick click |
+| axes[0]      | Primary Touchpad/Joystick X       |
+| axes[1]      | Primary Touchpad/Joystick Y       |
+| axes[2]      | Secondary Touchpad/Joystick X     |
+| axes[3]      | Secondary Touchpad/Joystick Y     |
+
+Additional device-specific inputs may be exposed after these reserved indices, but devices that lack one of the canonical inputs must still preserve their place in the array. If a device has both a touchpad and a joystick the UA should designate one of them to be the primary axis-based input and expose the other at axes[2] and axes[3] with an associated button at button[3].
+
+```js
+function onXRFrame(timestamp, frame) {
+  let inputSource = primaryInputSource;
+
+  // Check to see if the input source has buttons/axes and is using the standard
+  // mapping.
+  if (inputSource && inputSource.gamepad &&
+      inputSource.gamepad.mapping == 'xr-standard') {
+    let gamepad = inputSource.gamepad;
+    
+    // Use joystick or touchpad values for movement.
+    MoveUser(gamepad.axes[0], gamepad.axes[1]);
+
+    // Use the trigger or joystick/touchpad click for painting.
+    if (gamepad.buttons[0].pressed || gamepad.buttons[1].pressed) {
+      EmitPaint();
+    }
+    
+    // etc.
+  }
+
+  // Do the rest of typical frame processing...
+}
+```
+
+If the application includes interactions that require user activation (such as starting media playback), the application can listen to the `XRInputSource`s `select` events, which fire for every pressed and released button on the controller. When triggered by a controller input, the `XRInputSourceEvent` will include a `buttonIndex` other than `-1` to indicate which button on the gamepad triggered the event.
+
+The UA may update the `gamepad` state at any point, but it must remain constant while running a batch of `XRSession` `requestAnimationFrame` callbacks or event callbacks which provide an `XRFrame`.
+
+### Exposing gamepad values with an action maps
+
+Some native APIs rely on what's commonly referred to as an "action mapping" system to handle controller input. In action map systems the developer creates a list of application-specific actions (such as "undo" or "jump") and suggested input bindings (like "left hand touchpad") that should trigger the related action. Such systems may allow users to re-bind the inputs associated with each action, and may not provide a mechanism for enumerating or monitoring the inputs outside of the action map.
+
+When using an API that limits reading controller input to use of an action map, it is suggested that a mapping be created with one action per possible input, given the same name as the target input. For example, an similar mapping to the following may be used for each device:
+
+| Button/Axis | Action name      | Sample binding            |
+|-------------|------------------|---------------------------|
+| button[0]   | "trigger"        | "[device]/trigger"        |
+| button[1]   | "touchpad-click" | "[device]/touchpad/click" |
+| button[2]   | "grip"           | "[device]/grip"           |
+| axis[0]     | "touchpad-x"     | "[device]/touchpad/x"     |
+| axis[1]     | "touchpad-y"     | "[device]/touchpad/y"     |
+
+If the API does not provided a way to enumerate the available input devices, the UA should provide bindings for the left and right hand instead of a specific device and expose a `Gamepad` for any hand that has at least one non-`null` input.
+
+The UA should not make any attempt to circumvent user remapping of the inputs.
+
 ## Appendix A: Proposed partial IDL
 This is a partial IDL and is considered additive to the core IDL found in the main [explainer](explainer.md).
 ```webidl
@@ -348,11 +430,11 @@ enum XRTargetRayMode {
 
 [SecureContext, Exposed=Window]
 interface XRInputSource {
-  readonly attribute DOMString renderId;
   readonly attribute XRHandedness handedness;
   readonly attribute XRTargetRayMode targetRayMode;
   readonly attribute XRSpace targetRaySpace;
   readonly attribute XRSpace? gripSpace;
+  readonly attribute Gamepad? gamepad;
 };
 
 //
@@ -373,10 +455,12 @@ dictionary XRSessionEventInit : EventInit {
 interface XRInputSourceEvent : Event {
   readonly attribute XRFrame frame;
   readonly attribute XRInputSource inputSource;
+  readonly attribute long buttonIndex;
 };
 
 dictionary XRInputSourceEventInit : EventInit {
   required XRFrame frame;
   required XRInputSource inputSource;
+  long buttonIndex = -1;
 };
 ```
