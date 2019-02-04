@@ -2,7 +2,7 @@
 Shortname: webxr
 Title: WebXR Device API
 Group: immersivewebwg
-Status: ED
+Status: w3c/ED
 ED: https://immersive-web.github.io/webxr/
 Repository: immersive-web/webxr
 Level: 1
@@ -581,7 +581,7 @@ An {{XRFrame}} represents a snapshot of the state of all of the tracked objects 
 [SecureContext, Exposed=Window] interface XRFrame {
   readonly attribute XRSession session;
 
-  XRViewerPose? getViewerPose(optional XRReferenceSpace referenceSpace);
+  XRViewerPose? getViewerPose(XRReferenceSpace referenceSpace);
   XRPose? getPose(XRSpace space, XRSpace relativeTo);
 };
 </pre>
@@ -596,7 +596,7 @@ When the <dfn method for="XRFrame">getViewerPose(|referenceSpace|)</dfn> method 
 
   1. If the {{XRFrame}}'s [=active=] boolean is <code>false</code>, throw a {{InvalidStateError}} and abort these steps.
   1. Let |session| be the {{XRFrame}}'s {{XRFrame/session}} object.
-  1. If |referenceSpace|'s [=XRSpace/session=] does not equal |session|, return <code>null</code> and abort these steps.
+  1. If |referenceSpace|'s [=XRSpace/session=] does not equal |session|, throw a {{InvalidStateError}} and abort these steps.
   1. If the [=viewer=]'s pose cannot be determined relative to |referenceSpace|, return <code>null</code>
   1. Return a new {{XRViewerPose}} describing the [=viewer=]'s pose relative to the origin of |referenceSpace| at the timestamp of the {{XRFrame}}.
 
@@ -608,14 +608,12 @@ When the <dfn method for="XRFrame">getPose(|space|, |relativeTo|)</dfn> method i
 
   1. If the {{XRFrame}}'s [=active=] boolean is <code>false</code>, throw a {{InvalidStateError}} and abort these steps.
   1. Let |session| be the {{XRFrame}}'s {{XRFrame/session}} object.
-  1. If |space|'s [=XRSpace/session=] does not equal |session|, return <code>null</code> and abort these steps.
-  1. If |relativeTo|'s [=XRSpace/session=] does not equal |session|, return <code>null</code> and abort these steps.
+  1. If |space|'s [=XRSpace/session=] does not equal |session|, throw a {{InvalidStateError}} and abort these steps.
+  1. If |relativeTo|'s [=XRSpace/session=] does not equal |session|, throw a {{InvalidStateError}} and abort these steps.
   1. If |space|'s pose cannot be determined relative to |relativeTo|, return <code>null</code>
   1. Return a new {{XRPose}} describing |space|'s pose relative to the origin of |relativeTo|.
 
 </div>
-
-Issue: Describe behavior for passing <code>null</code> {{XRReferenceSpace}}s to {{getViewerPose()}} and {{getPose()}}
 
 ISSUE: The last two steps of the {{getViewerPose()}} and {{getPose()}} algorithms need to be expanded.
 
@@ -709,13 +707,13 @@ interface XRStationaryReferenceSpace : XRReferenceSpace {
 };
 </pre>
 
-There are several subtypes of {{XRStationaryReferenceSpace}}, determined by the {{XRStationaryReferenceSpaceOptions/subtype}} value of the {{XRStationaryReferenceSpaceOptions}} dictionary passed into the {{requestReferenceSpace()}} call:
+There are several subtypes of {{XRStationaryReferenceSpace}}, determined by the {{XRReferenceSpaceOptions/subtype}} value of the {{XRReferenceSpaceOptions}} dictionary passed into the {{requestReferenceSpace()}} call:
 
-- Passing a {{XRStationaryReferenceSpaceOptions/subtype}} of <dfn enum-value for="XRStationaryReferenceSpaceSubtype">eye-level</dfn> creates an {{XRStationaryReferenceSpace}} with it's origin near the user's head at the time of creation. The exact position and orientation will be initialized based on the conventions of the underlying platform.
+- Passing a {{XRReferenceSpaceOptions/subtype}} of <dfn enum-value for="XRStationaryReferenceSpaceSubtype">eye-level</dfn> creates an {{XRStationaryReferenceSpace}} with it's origin near the user's head at the time of creation. The exact position and orientation will be initialized based on the conventions of the underlying platform.
 
-- Passing a {{XRReferenceSpaceOptions/type}} of <dfn enum-value for="XRStationaryReferenceSpaceSubtype">floor-level</dfn> creates an {{XRStationaryReferenceSpace}} with it's origin positioned at the floor in a safe position for the user to stand. The `y` axis equals `0` at floor level, with the `x` and `z` position and orientation initialized based on the conventions of the underlying platform. If the floor level isn't known it will be estimated.
+- Passing a {{XRReferenceSpaceOptions/subtype}} of <dfn enum-value for="XRStationaryReferenceSpaceSubtype">floor-level</dfn> creates an {{XRStationaryReferenceSpace}} with it's origin positioned at the floor in a safe position for the user to stand. The `y` axis equals `0` at floor level, with the `x` and `z` position and orientation initialized based on the conventions of the underlying platform. If the floor level isn't known it will be estimated.
 
-- Passing a {{XRReferenceSpaceOptions/type}} of <dfn enum-value for="XRStationaryReferenceSpaceSubtype">position-disabled</dfn> creates an {{XRStationaryReferenceSpace}} where orientation is tracked but the [=viewer=]s position is always reported as being at the origin.
+- Passing a {{XRReferenceSpaceOptions/subtype}} of <dfn enum-value for="XRStationaryReferenceSpaceSubtype">position-disabled</dfn> creates an {{XRStationaryReferenceSpace}} where orientation is tracked but the [=viewer=]s position is always reported as being at the origin.
 
 Note: The {{position-disabled}} subtype is primarily intended for use with pre-rendered media such as panoramic photos or videos. It should not be used for most other media types due to user discomfort associated with the lack of a neck model or full positional tracking.
 
@@ -947,7 +945,7 @@ An {{XRPose}} describes a position and orientation in space relative to an {{XRS
 
 The <dfn attribute for="XRPose">transform</dfn> attribute describes the {{XRRigidTransform}} between two {{XRSpace}}.
 
-The <dfn attribute for="XRPose">emulatedPosition</dfn> attribute indicates the accuracy of the {{XRPose/transform}}.{{XRRigidTransform/position}} value. {{XRPose/emulatedPosition}} MUST be set to <code>true</code> if the given positional values are software estimations, such as those provided by a neck or arm model. {{XRPose/emulatedPosition}} MUST be set to <code>false</code> if the positional values are based on sensor readings.
+The <dfn attribute for="XRPose">emulatedPosition</dfn> attribute MUST be <code>false</code> if the {{XRPose/transform}}.{{XRRigidTransform/position}} values are based on sensor readings, or <code>true</code> if the position values are software estimations, such as those provided by a neck or arm model. 
 
 XRViewerPose {#xrviewerpose-interface}
 -------------
@@ -1008,9 +1006,9 @@ Note: Some input sources, like an {{XRInputSource}} with {{targetRayMode}} set t
 
 The <dfn attribute for="XRInputSource">targetRaySpace</dfn> attribute is an {{XRSpace}} that tracks the pose of the preferred pointing ray of the {{XRInputSource}}, as defined by the {{targetRayMode}}.
 
-The <dfn attribute for="XRInputSource">gripSpace</dfn> attribute is an {{XRSpace}} that tracks the transform that should be used to render virtual objects such that they appear to be held in the user's hand. If the user were to hold a straight rod, this {{XRSpace}} places the origin at the centroid of their curled fingers and where the <code>-Z</code> axis points along the length of the rod towards their thumb. The <code>X</code> axis is perpendicular to the back of the hand being described, with back of the users right hand pointing towards <code>+X</code> and the back of the user's left hand pointing towards <code>-X</code>. The <code>Y</code> axis is implied by the relationship between the <code>X</code> and <code>Z</code> axis, with <code>+Y</code> roughly pointing in the direction of the user's arm.
+The <dfn attribute for="XRInputSource">gripSpace</dfn> attribute is an {{XRSpace}} that tracks the pose that should be used to render virtual objects such that they appear to be held in the user's hand. If the user were to hold a straight rod, this {{XRSpace}} places the origin at the centroid of their curled fingers and where the <code>-Z</code> axis points along the length of the rod towards their thumb. The <code>X</code> axis is perpendicular to the back of the hand being described, with back of the users right hand pointing towards <code>+X</code> and the back of the user's left hand pointing towards <code>-X</code>. The <code>Y</code> axis is implied by the relationship between the <code>X</code> and <code>Z</code> axis, with <code>+Y</code> roughly pointing in the direction of the user's arm.
 
-The {{gripSpace}} MUST be `null` if the input source isn't trackable.
+The {{gripSpace}} MUST be `null` if the input source isn't inherently trackable.
 
 Layers {#layers}
 ======
